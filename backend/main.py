@@ -31,7 +31,12 @@ from PIL import Image
 
 # ── Configuration ────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
-MEDIA_DIR = Path(os.environ.get("MEDIA_DIR", str(BASE_DIR / "media")))
+# Resolve MEDIA_DIR safely (Path.resolve() can fail on Windows external drives)
+_raw_media = os.environ.get("MEDIA_DIR", str(BASE_DIR / "media")).rstrip("/\\")
+try:
+    MEDIA_DIR = Path(_raw_media).resolve()
+except OSError:
+    MEDIA_DIR = Path(os.path.abspath(_raw_media))
 THUMBNAIL_DIR = BASE_DIR / "thumbnails"
 DB_PATH = BASE_DIR / "ghumaggersnap.db"
 
@@ -207,9 +212,22 @@ def safe_resolve(rel_path: str) -> Path:
     cleaned = rel_path.strip("/").replace("\\", "/")
     if cleaned in ("", "."):
         return MEDIA_DIR
-    resolved = (MEDIA_DIR / cleaned).resolve()
-    media_resolved = MEDIA_DIR.resolve()
-    if not str(resolved).startswith(str(media_resolved)):
+
+    target = MEDIA_DIR / cleaned
+
+    # Use abspath as fallback — resolve() can fail on Windows external drives
+    try:
+        resolved = target.resolve()
+    except OSError:
+        resolved = Path(os.path.abspath(target))
+
+    # Check that resolved path is under MEDIA_DIR
+    try:
+        common = os.path.commonpath([str(resolved), str(MEDIA_DIR)])
+    except ValueError:
+        # Windows: different drives have no common path
+        raise HTTPException(status_code=403, detail="Path traversal denied")
+    if os.path.normcase(common) != os.path.normcase(str(MEDIA_DIR)):
         raise HTTPException(status_code=403, detail="Path traversal denied")
     return resolved
 

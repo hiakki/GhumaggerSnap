@@ -27,7 +27,11 @@ if not "%~1"=="" (
     set /p "MEDIA_DIR=  Enter media directory path: "
 )
 
-if not exist "%MEDIA_DIR%" (
+REM Strip trailing backslashes/slashes (causes WinError 3 on some drives)
+if "%MEDIA_DIR:~-1%"=="\" set "MEDIA_DIR=%MEDIA_DIR:~0,-1%"
+if "%MEDIA_DIR:~-1%"=="/" set "MEDIA_DIR=%MEDIA_DIR:~0,-1%"
+
+if not exist "%MEDIA_DIR%\" (
     echo [ERR] Directory not found: %MEDIA_DIR%
     pause
     exit /b 1
