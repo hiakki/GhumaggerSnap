@@ -75,13 +75,15 @@ npm run dev
 
 Open **http://localhost:3000** in your browser.
 
-### Default Login
+### Login
 
-| Username | Password | Role  |
-|----------|----------|-------|
-| `admin`  | `admin`  | Admin |
+You will be prompted for an admin **username** and **password** every time you start the app. These credentials are used to log in via the browser.
 
-> Change the password after first login via admin panel.
+You can also pass them as environment variables to skip the prompt:
+
+```bash
+ADMIN_USER=myuser ADMIN_PASS=mypass MEDIA_DIR=/path/to/photos ./start.sh
+```
 
 ## User Roles
 

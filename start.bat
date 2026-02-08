@@ -36,6 +36,28 @@ if not exist "%MEDIA_DIR%" (
 
 echo [OK]   Media directory: %MEDIA_DIR%
 
+REM ── Admin credentials ─────────────────────────
+if "%ADMIN_USER%"=="" (
+    echo.
+    echo   Admin Account Setup
+    echo.
+    set /p "ADMIN_USER=  Enter admin username: "
+    set /p "ADMIN_PASS=  Enter admin password: "
+)
+
+if "%ADMIN_USER%"=="" (
+    echo [ERR] Username cannot be empty.
+    pause
+    exit /b 1
+)
+if "%ADMIN_PASS%"=="" (
+    echo [ERR] Password cannot be empty.
+    pause
+    exit /b 1
+)
+
+echo [OK]   Admin user: %ADMIN_USER%
+
 REM ── Check Python ──────────────────────────────
 where python >nul 2>nul
 if %ERRORLEVEL% neq 0 (
@@ -87,7 +109,7 @@ echo =============================================
 echo.
 
 cd /d "%ROOT%backend"
-start "GhumaggerSnap-Backend" cmd /c "set MEDIA_DIR=%MEDIA_DIR% && venv\Scripts\activate.bat && python main.py"
+start "GhumaggerSnap-Backend" cmd /c "set MEDIA_DIR=%MEDIA_DIR% && set ADMIN_USER=%ADMIN_USER% && set ADMIN_PASS=%ADMIN_PASS% && venv\Scripts\activate.bat && python main.py"
 echo [INFO] Backend  → http://localhost:8000
 
 timeout /t 2 /nobreak >nul
@@ -100,7 +122,7 @@ echo.
 echo =============================================
 echo   GhumaggerSnap is running!
 echo   Open http://localhost:3000
-echo   Login: admin / admin
+echo   Login: %ADMIN_USER% / [your password]
 echo   Media: %MEDIA_DIR%
 echo   Close terminal windows to stop
 echo =============================================

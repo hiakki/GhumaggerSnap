@@ -59,6 +59,22 @@ def get_db():
 
 
 def init_db():
+    admin_user = os.environ.get("ADMIN_USER", "").strip()
+    admin_pass = os.environ.get("ADMIN_PASS", "").strip()
+
+    # If env vars not set, prompt interactively
+    if not admin_user or not admin_pass:
+        import getpass
+        print()
+        print("  ── GhumaggerSnap — Admin Setup ──")
+        print()
+        admin_user = admin_user or input("  Enter admin username: ").strip()
+        admin_pass = admin_pass or getpass.getpass("  Enter admin password: ").strip()
+        if not admin_user or not admin_pass:
+            print("  [ERR] Username and password cannot be empty.")
+            raise SystemExit(1)
+        print()
+
     conn = sqlite3.connect(str(DB_PATH))
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS users (
@@ -69,16 +85,24 @@ def init_db():
             created_at TEXT NOT NULL
         );
     """)
-    cursor = conn.execute("SELECT COUNT(*) FROM users")
-    if cursor.fetchone()[0] == 0:
+
+    # Reset admin user on every startup (ensures credentials match what was entered)
+    pw_hash = bcrypt.hashpw(admin_pass.encode(), bcrypt.gensalt()).decode()
+    existing = conn.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1").fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE users SET username=?, password_hash=? WHERE id=?",
+            (admin_user, pw_hash, existing[0]),
+        )
+    else:
         admin_id = str(uuid.uuid4())
-        pw = bcrypt.hashpw("admin".encode(), bcrypt.gensalt()).decode()
         conn.execute(
             "INSERT INTO users (id,username,password_hash,role,created_at) VALUES (?,?,?,?,?)",
-            (admin_id, "admin", pw, "admin", datetime.now(timezone.utc).isoformat()),
+            (admin_id, admin_user, pw_hash, "admin", datetime.now(timezone.utc).isoformat()),
         )
-        conn.commit()
+    conn.commit()
     conn.close()
+    print(f"  [OK] Admin user '{admin_user}' ready.")
 
 
 # ── Pydantic Models ──────────────────────────────────────────────────────────

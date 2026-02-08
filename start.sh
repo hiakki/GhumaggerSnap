@@ -48,6 +48,24 @@ fi
 export MEDIA_DIR
 ok "Media directory: $MEDIA_DIR"
 
+# ── Admin credentials ─────────────────────────
+if [ -z "$ADMIN_USER" ]; then
+  echo ""
+  echo -e "${BOLD}Admin Account Setup${NC}"
+  read -p "  Enter admin username: " ADMIN_USER
+  read -s -p "  Enter admin password: " ADMIN_PASS
+  echo ""
+fi
+
+if [ -z "$ADMIN_USER" ] || [ -z "$ADMIN_PASS" ]; then
+  err "Username and password cannot be empty."
+  exit 1
+fi
+
+export ADMIN_USER
+export ADMIN_PASS
+ok "Admin user: $ADMIN_USER"
+
 # ── Check Python ──────────────────────────────
 PYTHON=""
 for cmd in python3 python; do
@@ -103,7 +121,7 @@ info "Frontend → http://localhost:3000  (PID: $FRONTEND_PID)"
 echo ""
 echo -e "${GREEN}${BOLD}✓ GhumaggerSnap is running!${NC}"
 echo -e "  Open ${BOLD}http://localhost:3000${NC} in your browser"
-echo -e "  Login: ${BOLD}admin / admin${NC}"
+echo -e "  Login: ${BOLD}$ADMIN_USER / <your password>${NC}"
 echo -e "  Media: ${BOLD}$MEDIA_DIR${NC}"
 echo -e "  Press Ctrl+C to stop"
 echo ""
