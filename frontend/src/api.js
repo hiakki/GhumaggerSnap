@@ -50,57 +50,45 @@ export const api = {
     return (await req('/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password, new_password }) })).json();
   },
 
-  /* Files */
+  /* Files (filesystem browser) */
   async getFiles(params = {}) {
     const q = new URLSearchParams();
+    if (params.path)      q.set('path', params.path);
     if (params.search)    q.set('search', params.search);
     if (params.file_type) q.set('file_type', params.file_type);
     if (params.sort)      q.set('sort', params.sort);
     return (await req(`/files?${q}`)).json();
   },
-  async getStats() { return (await req('/stats')).json(); },
 
-  uploadFiles(files, onProgress) {
-    const fd = new FormData();
-    files.forEach(f => fd.append('files', f));
-    const token = getToken();
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${API}/files/upload`);
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(Math.round(e.loaded / e.total * 100)); };
-      xhr.onload  = () => xhr.status >= 200 && xhr.status < 300 ? resolve(JSON.parse(xhr.responseText)) : reject(new Error('Upload failed'));
-      xhr.onerror = () => reject(new Error('Upload failed'));
-      xhr.send(fd);
-    });
+  async getStats(path = '/') {
+    const q = new URLSearchParams({ path });
+    return (await req(`/stats?${q}`)).json();
   },
 
-  async deleteFile(id)      { return (await req(`/files/${id}`, { method: 'DELETE' })).json(); },
-  async bulkDelete(ids)     { return (await req('/files/bulk-delete', { method: 'POST', body: JSON.stringify(ids) })).json(); },
-
   /* URL builders (token in query for <img>/<video>) */
-  previewUrl(id)   { return `${API}/files/${id}/preview?token=${getToken()}`; },
-  thumbnailUrl(id) { return `${API}/files/${id}/thumbnail?token=${getToken()}`; },
-  downloadUrl(id)  { return `${API}/files/${id}/download?token=${getToken()}`; },
+  previewUrl(filePath)   { return `${API}/files/preview?path=${encodeURIComponent(filePath)}&token=${getToken()}`; },
+  thumbnailUrl(filePath) { return `${API}/files/thumbnail?path=${encodeURIComponent(filePath)}&token=${getToken()}`; },
+  downloadUrl(filePath)  { return `${API}/files/download?path=${encodeURIComponent(filePath)}&token=${getToken()}`; },
 
   /* Downloads */
-  downloadFile(id, name) {
+  downloadFile(filePath, fileName) {
     const a = document.createElement('a');
-    a.href = this.downloadUrl(id); a.download = name;
+    a.href = this.downloadUrl(filePath);
+    a.download = fileName;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   },
 
-  async bulkDownload(ids) {
+  async bulkDownload(paths) {
     const res = await fetch(`${API}/files/bulk-download`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(ids),
+      body: JSON.stringify(paths),
     });
     if (!res.ok) throw new Error('Bulk download failed');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `files-${new Date().toISOString().slice(0, 10)}.zip`;
+    a.href = url; a.download = `GhumaggerSnap-${new Date().toISOString().slice(0, 10)}.zip`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   },

@@ -1,6 +1,7 @@
 @echo off
 REM ──────────────────────────────────────────────
 REM GhumaggerSnap — start script (Windows)
+REM Usage: start.bat [MEDIA_DIR_PATH]
 REM ──────────────────────────────────────────────
 setlocal EnableDelayedExpansion
 set "ROOT=%~dp0"
@@ -11,6 +12,29 @@ echo =============================================
 echo   GhumaggerSnap — Starting...
 echo =============================================
 echo.
+
+REM ── MEDIA_DIR ─────────────────────────────────
+if not "%~1"=="" (
+    set "MEDIA_DIR=%~1"
+) else if "%MEDIA_DIR%"=="" (
+    echo   Point this to the folder containing your trip photos/videos.
+    echo   This can be a local directory, USB drive, or external hard drive.
+    echo.
+    echo   Examples:
+    echo     D:\TripPhotos
+    echo     E:\DCIM\Camera
+    echo     C:\Users\you\Pictures\Trips
+    echo.
+    set /p "MEDIA_DIR=  Enter media directory path: "
+)
+
+if not exist "%MEDIA_DIR%" (
+    echo [ERR] Directory not found: %MEDIA_DIR%
+    pause
+    exit /b 1
+)
+
+echo [OK]   Media directory: %MEDIA_DIR%
 
 REM ── Check Python ──────────────────────────────
 where python >nul 2>nul
@@ -63,7 +87,7 @@ echo =============================================
 echo.
 
 cd /d "%ROOT%backend"
-start "GhumaggerSnap-Backend" cmd /c "venv\Scripts\activate.bat && python main.py"
+start "GhumaggerSnap-Backend" cmd /c "set MEDIA_DIR=%MEDIA_DIR% && venv\Scripts\activate.bat && python main.py"
 echo [INFO] Backend  → http://localhost:8000
 
 timeout /t 2 /nobreak >nul
@@ -77,6 +101,7 @@ echo =============================================
 echo   GhumaggerSnap is running!
 echo   Open http://localhost:3000
 echo   Login: admin / admin
+echo   Media: %MEDIA_DIR%
 echo   Close terminal windows to stop
 echo =============================================
 echo.

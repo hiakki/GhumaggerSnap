@@ -2,38 +2,36 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../App';
 import { api } from '../api';
-import FileCard, { FileRow, fmtSize } from './FileCard';
+import FileCard, { FileRow, FolderCard, FolderRow, fmtSize } from './FileCard';
 import FilePreview from './FilePreview';
 import {
-  Search, Upload, LayoutGrid, List, SlidersHorizontal, Download, Trash2,
-  X, LogOut, Users, Plus, Share2, ChevronDown, Image, Film, FileIcon,
-  FolderOpen, Check, RefreshCw, Shield, UserPlus, Eye, EyeOff, Lock,
+  Search, LayoutGrid, List, SlidersHorizontal, Download,
+  X, LogOut, Users, Share2, ChevronDown, Image, Film, FileIcon,
+  FolderOpen, Check, Shield, UserPlus, Trash2, ChevronRight, Home,
+  RefreshCw,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════════
-   Dashboard – main file browser
+   Dashboard – filesystem browser with folder navigation
    ═══════════════════════════════════════════════════════════════════ */
 export default function Dashboard() {
   const { user, logout } = useAuth();
-  const canModify = user.role === 'admin' || user.role === 'editor';
 
-  /* ── File state ─────────────────── */
+  /* ── Navigation ─────────────────── */
+  const [currentPath, setCurrentPath] = useState('/');
+
+  /* ── Data ────────────────────────── */
+  const [folders, setFolders]   = useState([]);
   const [files, setFiles]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
   const [fileType, setFileType] = useState('all');
-  const [sort, setSort]         = useState('newest');
+  const [sort, setSort]         = useState('name');
   const [view, setView]         = useState('grid'); // grid | list
 
-  /* ── Selection ──────────────────── */
+  /* ── Selection (files only) ─────── */
   const [selected, setSelected]   = useState(new Set());
   const lastIdx = useRef(null);
-
-  /* ── Upload ─────────────────────── */
-  const [uploading, setUploading]       = useState(false);
-  const [uploadProg, setUploadProg]     = useState(0);
-  const [dragOver, setDragOver]         = useState(false);
-  const fileInput = useRef(null);
 
   /* ── Preview ────────────────────── */
   const [previewFile, setPreviewFile] = useState(null);
@@ -48,29 +46,50 @@ export default function Dashboard() {
 
   /* ── Load files ─────────────────── */
   const loadFiles = useCallback(async () => {
+    setLoading(true);
     try {
-      const data = await api.getFiles({ search, file_type: fileType, sort });
-      setFiles(data);
+      const data = await api.getFiles({ path: currentPath, search, file_type: fileType, sort });
+      setFolders(data.folders || []);
+      setFiles(data.files || []);
     } catch { toast.error('Failed to load files'); }
     finally { setLoading(false); }
-  }, [search, fileType, sort]);
+  }, [currentPath, search, fileType, sort]);
 
   useEffect(() => { loadFiles(); }, [loadFiles]);
-  useEffect(() => { api.getStats().then(setStats).catch(() => {}); }, [files.length]);
+  useEffect(() => { api.getStats(currentPath).then(setStats).catch(() => {}); }, [currentPath, files.length]);
+
+  // Clear selection when navigating
+  useEffect(() => { setSelected(new Set()); lastIdx.current = null; }, [currentPath]);
+
+  /* ── Navigation ─────────────────── */
+  const navigateTo = (path) => {
+    setSearch('');
+    setCurrentPath(path);
+  };
+
+  const breadcrumbs = currentPath === '/'
+    ? [{ name: 'Home', path: '/' }]
+    : [
+        { name: 'Home', path: '/' },
+        ...currentPath.split('/').filter(Boolean).map((part, i, arr) => ({
+          name: part,
+          path: '/' + arr.slice(0, i + 1).join('/'),
+        })),
+      ];
 
   /* ── Selection ──────────────────── */
   const selecting = selected.size > 0;
 
-  const handleSelect = (fileId, index, e) => {
+  const handleSelect = (filePath, index, e) => {
     const s = new Set(selected);
     if (e.shiftKey && lastIdx.current != null) {
       const [a, b] = [Math.min(lastIdx.current, index), Math.max(lastIdx.current, index)];
-      for (let i = a; i <= b; i++) s.add(files[i].id);
+      for (let i = a; i <= b; i++) s.add(files[i].path);
     } else if (e.ctrlKey || e.metaKey) {
-      s.has(fileId) ? s.delete(fileId) : s.add(fileId);
+      s.has(filePath) ? s.delete(filePath) : s.add(filePath);
     } else {
-      if (s.has(fileId) && s.size === 1) s.clear();
-      else { s.clear(); s.add(fileId); }
+      if (s.has(filePath) && s.size === 1) s.clear();
+      else { s.clear(); s.add(filePath); }
     }
     lastIdx.current = index;
     setSelected(s);
@@ -78,46 +97,20 @@ export default function Dashboard() {
 
   const selectAll = () => {
     if (selected.size === files.length) setSelected(new Set());
-    else setSelected(new Set(files.map(f => f.id)));
+    else setSelected(new Set(files.map(f => f.path)));
   };
-
-  /* ── Upload ─────────────────────── */
-  const doUpload = async (list) => {
-    if (!list.length) return;
-    setUploading(true); setUploadProg(0);
-    try {
-      const res = await api.uploadFiles(Array.from(list), setUploadProg);
-      toast.success(`${res.count} file(s) uploaded`);
-      loadFiles();
-    } catch { toast.error('Upload failed'); }
-    finally { setUploading(false); setUploadProg(0); }
-  };
-
-  /* ── Drag & drop ────────────────── */
-  const dragCounter = useRef(0);
-  const onDragEnter = (e) => { e.preventDefault(); dragCounter.current++; setDragOver(true); };
-  const onDragLeave = (e) => { e.preventDefault(); dragCounter.current--; if (dragCounter.current <= 0) { setDragOver(false); dragCounter.current = 0; } };
-  const onDragOver  = (e) => { e.preventDefault(); };
-  const onDrop      = (e) => { e.preventDefault(); dragCounter.current = 0; setDragOver(false); if (canModify && e.dataTransfer.files.length) doUpload(e.dataTransfer.files); };
 
   /* ── Bulk actions ───────────────── */
   const bulkDownload = async () => {
-    try { toast.loading('Preparing ZIP...', { id: 'zip' }); await api.bulkDownload(Array.from(selected)); toast.success('Download started', { id: 'zip' }); }
-    catch { toast.error('Download failed', { id: 'zip' }); }
-  };
-  const bulkDelete = async () => {
-    if (!confirm(`Delete ${selected.size} file(s)?`)) return;
-    try { await api.bulkDelete(Array.from(selected)); setSelected(new Set()); loadFiles(); toast.success('Files deleted'); }
-    catch { toast.error('Delete failed'); }
-  };
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this file?')) return;
-    try { await api.deleteFile(id); loadFiles(); toast.success('Deleted'); }
-    catch { toast.error('Delete failed'); }
+    try {
+      toast.loading('Preparing ZIP...', { id: 'zip' });
+      await api.bulkDownload(Array.from(selected));
+      toast.success('Download started', { id: 'zip' });
+    } catch { toast.error('Download failed', { id: 'zip' }); }
   };
 
   /* ── Preview nav ────────────────── */
-  const previewIdx = previewFile ? files.findIndex(f => f.id === previewFile.id) : -1;
+  const previewIdx = previewFile ? files.findIndex(f => f.path === previewFile.path) : -1;
   const prevPreview = () => { if (previewIdx > 0) setPreviewFile(files[previewIdx - 1]); };
   const nextPreview = () => { if (previewIdx < files.length - 1) setPreviewFile(files[previewIdx + 1]); };
 
@@ -127,32 +120,27 @@ export default function Dashboard() {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); selectAll(); }
       if (e.key === 'Escape') setSelected(new Set());
+      if (e.key === 'Backspace' && currentPath !== '/') {
+        e.preventDefault();
+        const parent = currentPath.split('/').slice(0, -1).join('/') || '/';
+        navigateTo(parent);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   });
 
+  const isEmpty = folders.length === 0 && files.length === 0;
+
   /* ═══════════ RENDER ═══════════ */
   return (
-    <div className="min-h-screen flex flex-col" onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={onDragOver} onDrop={onDrop}>
-
-      {/* ── Drop overlay ── */}
-      {dragOver && (
-        <div className="drop-overlay">
-          <div className="flex flex-col items-center gap-3 animate-scale-in">
-            <div className="w-20 h-20 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg">
-              <Upload className="w-10 h-10 text-white" />
-            </div>
-            <p className="text-blue-700 font-semibold text-lg">Drop files to upload</p>
-          </div>
-        </div>
-      )}
+    <div className="min-h-screen flex flex-col">
 
       {/* ── Header ── */}
       <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-200">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
           {/* Logo */}
-          <div className="flex items-center gap-2.5 mr-2 sm:mr-4 shrink-0">
+          <div className="flex items-center gap-2.5 mr-2 sm:mr-4 shrink-0 cursor-pointer" onClick={() => navigateTo('/')}>
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center">
               <Share2 className="w-5 h-5 text-white" />
             </div>
@@ -164,7 +152,7 @@ export default function Dashboard() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search files..."
+              placeholder="Search files in this folder..."
               className="w-full pl-10 pr-4 py-2 bg-gray-100 border border-transparent rounded-xl text-sm focus:bg-white focus:border-gray-300 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
             />
             {search && (
@@ -176,6 +164,11 @@ export default function Dashboard() {
 
           {/* Actions */}
           <div className="flex items-center gap-1.5">
+            {/* Refresh */}
+            <button onClick={loadFiles} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 transition-colors" title="Refresh">
+              <RefreshCw className="w-5 h-5" />
+            </button>
+
             {/* Filter */}
             <div className="relative">
               <button onClick={() => setShowFilter(!showFilter)}
@@ -191,12 +184,12 @@ export default function Dashboard() {
                       <button key={t} onClick={() => { setFileType(t); setShowFilter(false); }}
                         className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${fileType === t ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}>
                         {t === 'all' ? <FolderOpen className="w-4 h-4" /> : t === 'image' ? <Image className="w-4 h-4" /> : <Film className="w-4 h-4" />}
-                        {t.charAt(0).toUpperCase() + t.slice(1)}s{t === 'all' ? '' : ''}
+                        {t === 'all' ? 'All files' : t.charAt(0).toUpperCase() + t.slice(1) + 's'}
                       </button>
                     ))}
                     <hr className="my-2" />
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Sort</p>
-                    {[['newest', 'Newest first'], ['oldest', 'Oldest first'], ['name', 'Name A-Z'], ['size', 'Largest first']].map(([k, l]) => (
+                    {[['name', 'Name A-Z'], ['newest', 'Newest first'], ['oldest', 'Oldest first'], ['size', 'Largest first']].map(([k, l]) => (
                       <button key={k} onClick={() => { setSort(k); setShowFilter(false); }}
                         className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${sort === k ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}>
                         {l}
@@ -216,21 +209,6 @@ export default function Dashboard() {
                 <List className="w-4 h-4" />
               </button>
             </div>
-
-            {/* Upload */}
-            {canModify && (
-              <>
-                <input ref={fileInput} type="file" multiple className="hidden" accept="image/*,video/*" onChange={e => { doUpload(e.target.files); e.target.value = ''; }} />
-                <button onClick={() => fileInput.current?.click()} disabled={uploading}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-medium rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 shadow-sm shadow-blue-200">
-                  {uploading ? (
-                    <><span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> {uploadProg}%</>
-                  ) : (
-                    <><Upload className="w-4 h-4" /> <span className="hidden sm:inline">Upload</span></>
-                  )}
-                </button>
-              </>
-            )}
 
             {/* User menu */}
             <div className="relative ml-1">
@@ -265,21 +243,32 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-
-        {/* Upload progress bar */}
-        {uploading && (
-          <div className="h-1 bg-gray-100">
-            <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300 ease-out" style={{ width: `${uploadProg}%` }} />
-          </div>
-        )}
       </header>
+
+      {/* ── Breadcrumbs ── */}
+      <div className="max-w-[1600px] mx-auto w-full px-4 sm:px-6 py-2.5 flex items-center gap-1 text-sm overflow-x-auto">
+        {breadcrumbs.map((bc, i) => (
+          <React.Fragment key={bc.path}>
+            {i > 0 && <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />}
+            <button
+              onClick={() => navigateTo(bc.path)}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0 transition-colors
+                ${i === breadcrumbs.length - 1 ? 'text-gray-800 font-medium bg-gray-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+            >
+              {i === 0 && <Home className="w-3.5 h-3.5" />}
+              {bc.name}
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
 
       {/* ── Stats bar ── */}
       {stats && (
-        <div className="max-w-[1600px] mx-auto w-full px-4 sm:px-6 py-3 flex items-center gap-4 text-xs text-gray-400">
-          <span>{stats.total_files} file{stats.total_files !== 1 ? 's' : ''}</span>
-          <span>&middot;</span>
-          <span>{fmtSize(stats.total_size)} total</span>
+        <div className="max-w-[1600px] mx-auto w-full px-4 sm:px-6 pb-2 flex items-center gap-4 text-xs text-gray-400">
+          {folders.length > 0 && <span>{folders.length} folder{folders.length !== 1 ? 's' : ''}</span>}
+          {folders.length > 0 && files.length > 0 && <span>&middot;</span>}
+          {files.length > 0 && <span>{stats.total_files} file{stats.total_files !== 1 ? 's' : ''}</span>}
+          {stats.total_size > 0 && <><span>&middot;</span><span>{fmtSize(stats.total_size)}</span></>}
           {stats.by_type?.image > 0 && <><span>&middot;</span><span className="flex items-center gap-1"><Image className="w-3 h-3" /> {stats.by_type.image}</span></>}
           {stats.by_type?.video > 0 && <><span>&middot;</span><span className="flex items-center gap-1"><Film className="w-3 h-3" /> {stats.by_type.video}</span></>}
           {selecting && (
@@ -295,35 +284,52 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── File Grid / List ── */}
+      {/* ── Content ── */}
       <main className={`flex-1 max-w-[1600px] mx-auto w-full px-4 sm:px-6 pb-24 ${selecting ? 'selecting' : ''}`}>
         {loading ? (
           <div className="flex items-center justify-center py-32">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
           </div>
-        ) : files.length === 0 ? (
+        ) : isEmpty ? (
           <div className="flex flex-col items-center justify-center py-32 text-gray-400 animate-fade-in">
             <FolderOpen className="w-16 h-16 mb-4 text-gray-300" />
             <p className="text-lg font-medium text-gray-500 mb-1">
-              {search || fileType !== 'all' ? 'No files match your filters' : 'No files yet'}
+              {search || fileType !== 'all' ? 'No files match your filters' : 'This folder is empty'}
             </p>
             <p className="text-sm">
-              {canModify ? 'Upload files by dragging them here or clicking the Upload button' : 'Files will appear here once uploaded'}
+              {search ? 'Try a different search term' : 'Navigate to a folder that contains images or videos'}
             </p>
           </div>
         ) : view === 'grid' ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 stagger">
-            {files.map((f, i) => (
-              <FileCard
-                key={f.id} file={f}
-                selected={selected.has(f.id)} selecting={selecting}
-                onSelect={(e) => handleSelect(f.id, i, e)}
-                onPreview={() => setPreviewFile(f)}
-                onDownload={() => api.downloadFile(f.id, f.original_name)}
-                onDelete={() => handleDelete(f.id)}
-                canDelete={canModify}
-              />
-            ))}
+          <div className="space-y-6">
+            {/* Folders */}
+            {folders.length > 0 && (
+              <div>
+                {files.length > 0 && <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Folders</p>}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 stagger">
+                  {folders.map(f => (
+                    <FolderCard key={f.path} folder={f} onOpen={() => navigateTo(f.path)} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Files */}
+            {files.length > 0 && (
+              <div>
+                {folders.length > 0 && <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Files</p>}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 stagger">
+                  {files.map((f, i) => (
+                    <FileCard
+                      key={f.path} file={f}
+                      selected={selected.has(f.path)} selecting={selecting}
+                      onSelect={(e) => handleSelect(f.path, i, e)}
+                      onPreview={() => setPreviewFile(f)}
+                      onDownload={() => api.downloadFile(f.path, f.name)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2 stagger">
@@ -334,18 +340,21 @@ export default function Dashboard() {
               <div className="flex-1">Name</div>
               <div className="hidden sm:block w-20 text-right">Size</div>
               <div className="hidden md:block w-24 text-right">Date</div>
-              <div className="hidden lg:block w-24 text-right">Uploaded by</div>
+              <div className="hidden lg:block w-24 text-right">Type</div>
               <div className="w-8" />
             </div>
+            {/* Folders */}
+            {folders.map(f => (
+              <FolderRow key={f.path} folder={f} onOpen={() => navigateTo(f.path)} />
+            ))}
+            {/* Files */}
             {files.map((f, i) => (
               <FileRow
-                key={f.id} file={f}
-                selected={selected.has(f.id)} selecting={selecting}
-                onSelect={(e) => handleSelect(f.id, i, e)}
+                key={f.path} file={f}
+                selected={selected.has(f.path)} selecting={selecting}
+                onSelect={(e) => handleSelect(f.path, i, e)}
                 onPreview={() => setPreviewFile(f)}
-                onDownload={() => api.downloadFile(f.id, f.original_name)}
-                onDelete={() => handleDelete(f.id)}
-                canDelete={canModify}
+                onDownload={() => api.downloadFile(f.path, f.name)}
               />
             ))}
           </div>
@@ -361,12 +370,6 @@ export default function Dashboard() {
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-medium transition-colors">
               <Download className="w-4 h-4" /> Download
             </button>
-            {canModify && (
-              <button onClick={bulkDelete}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm font-medium transition-colors">
-                <Trash2 className="w-4 h-4" /> Delete
-              </button>
-            )}
             <button onClick={() => setSelected(new Set())}
               className="ml-1 p-1.5 rounded-lg hover:bg-white/10 transition-colors">
               <X className="w-4 h-4" />
@@ -431,7 +434,6 @@ function UserModal({ onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-lg mx-4 animate-scale-in overflow-hidden">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-blue-600" />
@@ -441,8 +443,6 @@ function UserModal({ onClose }) {
             <X className="w-5 h-5" />
           </button>
         </div>
-
-        {/* User list */}
         <div className="max-h-64 overflow-y-auto divide-y divide-gray-100">
           {loading ? (
             <div className="flex items-center justify-center py-8">
@@ -467,8 +467,6 @@ function UserModal({ onClose }) {
             </div>
           ))}
         </div>
-
-        {/* Create user form */}
         <form onSubmit={create} className="px-6 py-4 border-t border-gray-100 bg-gray-50/50">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <UserPlus className="w-3.5 h-3.5" /> Create New User
@@ -481,7 +479,6 @@ function UserModal({ onClose }) {
             <select value={role} onChange={e => setRole(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
               <option value="viewer">Viewer</option>
-              <option value="editor">Editor</option>
               <option value="admin">Admin</option>
             </select>
             <button type="submit" disabled={creating}

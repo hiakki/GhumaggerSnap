@@ -6,7 +6,7 @@ import { fmtSize } from './FileCard';
 export default function FilePreview({ file, onClose, onPrev, onNext, hasPrev, hasNext }) {
   const isImg = file.file_type === 'image';
   const isVid = file.file_type === 'video';
-  const previewUrl = api.previewUrl(file.id);
+  const previewUrl = api.previewUrl(file.path);
 
   const handleKey = useCallback((e) => {
     if (e.key === 'Escape')     onClose();
@@ -32,12 +32,12 @@ export default function FilePreview({ file, onClose, onPrev, onNext, hasPrev, ha
             <X className="w-5 h-5" />
           </button>
           <div className="min-w-0">
-            <p className="text-white font-medium text-sm truncate max-w-xs sm:max-w-md">{file.original_name}</p>
-            <p className="text-white/60 text-xs">{fmtSize(file.size)} &middot; {file.uploader_name}</p>
+            <p className="text-white font-medium text-sm truncate max-w-xs sm:max-w-md">{file.name}</p>
+            <p className="text-white/60 text-xs">{fmtSize(file.size)}</p>
           </div>
         </div>
         <button
-          onClick={() => api.downloadFile(file.id, file.original_name)}
+          onClick={() => api.downloadFile(file.path, file.name)}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors backdrop-blur-sm"
         >
           <Download className="w-4 h-4" /> Download
@@ -60,15 +60,15 @@ export default function FilePreview({ file, onClose, onPrev, onNext, hasPrev, ha
       <div className="preview-content max-w-[90vw] max-h-[85vh] flex items-center justify-center">
         {isImg ? (
           <img
-            key={file.id}
+            key={file.path}
             src={previewUrl}
-            alt={file.original_name}
+            alt={file.name}
             className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
             draggable={false}
           />
         ) : isVid ? (
           <video
-            key={file.id}
+            key={file.path}
             src={previewUrl}
             controls
             autoPlay
@@ -78,10 +78,10 @@ export default function FilePreview({ file, onClose, onPrev, onNext, hasPrev, ha
         ) : (
           <div className="flex flex-col items-center gap-4 text-white/80 p-8">
             <FileIcon className="w-20 h-20" />
-            <p className="text-lg font-medium">{file.original_name}</p>
+            <p className="text-lg font-medium">{file.name}</p>
             <p className="text-sm text-white/50">Preview not available for this file type</p>
             <button
-              onClick={() => api.downloadFile(file.id, file.original_name)}
+              onClick={() => api.downloadFile(file.path, file.name)}
               className="mt-2 flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors"
             >
               <Download className="w-4 h-4" /> Download File

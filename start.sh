@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────
 # GhumaggerSnap — start script (Linux / macOS)
+# Usage: ./start.sh [MEDIA_DIR_PATH]
 # ──────────────────────────────────────────────
 set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -17,6 +18,35 @@ cleanup() {
   exit 0
 }
 trap cleanup SIGINT SIGTERM
+
+# ── MEDIA_DIR ─────────────────────────────────
+# Accept from: 1) command-line arg  2) env var  3) prompt
+MEDIA_DIR="${1:-$MEDIA_DIR}"
+if [ -z "$MEDIA_DIR" ]; then
+  echo ""
+  echo -e "${BOLD}GhumaggerSnap — Media Directory Setup${NC}"
+  echo ""
+  echo "  Point this to the folder containing your trip photos/videos."
+  echo "  This can be a local directory, USB drive, or external hard drive."
+  echo ""
+  echo "  Examples:"
+  echo "    /Volumes/SanDisk/TripPhotos"
+  echo "    /media/usb/Photos"
+  echo "    ~/Pictures/Trips"
+  echo ""
+  read -p "  Enter media directory path: " MEDIA_DIR
+fi
+
+# Expand ~ if present
+MEDIA_DIR="${MEDIA_DIR/#\~/$HOME}"
+
+if [ ! -d "$MEDIA_DIR" ]; then
+  err "Directory not found: $MEDIA_DIR"
+  exit 1
+fi
+
+export MEDIA_DIR
+ok "Media directory: $MEDIA_DIR"
 
 # ── Check Python ──────────────────────────────
 PYTHON=""
@@ -74,6 +104,7 @@ echo ""
 echo -e "${GREEN}${BOLD}✓ GhumaggerSnap is running!${NC}"
 echo -e "  Open ${BOLD}http://localhost:3000${NC} in your browser"
 echo -e "  Login: ${BOLD}admin / admin${NC}"
+echo -e "  Media: ${BOLD}$MEDIA_DIR${NC}"
 echo -e "  Press Ctrl+C to stop"
 echo ""
 
