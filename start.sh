@@ -87,8 +87,12 @@ if [ ! -d "venv" ]; then
   $PYTHON -m venv venv
 fi
 
-source venv/bin/activate 2>/dev/null || source venv/Scripts/activate 2>/dev/null
-pip install -q -r requirements.txt
+# Use venv pip/python directly (avoids activate issues across shells)
+VENV_PIP="$ROOT/backend/venv/bin/pip"
+VENV_PYTHON="$ROOT/backend/venv/bin/python3"
+[ ! -f "$VENV_PIP" ] && VENV_PIP="$ROOT/backend/venv/Scripts/pip"
+[ ! -f "$VENV_PYTHON" ] && VENV_PYTHON="$ROOT/backend/venv/Scripts/python"
+$VENV_PIP install -q -r requirements.txt
 ok "Backend dependencies installed"
 
 # ── Frontend setup ────────────────────────────
@@ -107,7 +111,7 @@ echo -e "${BOLD}Starting GhumaggerSnap...${NC}"
 echo ""
 
 cd "$ROOT/backend"
-$PYTHON main.py &
+$VENV_PYTHON main.py &
 BACKEND_PID=$!
 info "Backend  → http://localhost:8000  (PID: $BACKEND_PID)"
 
