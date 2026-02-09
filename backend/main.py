@@ -20,7 +20,7 @@ from fastapi import (
     Body, Query, Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -274,8 +274,19 @@ def make_thumbnail(src: Path, dst: Path) -> bool:
 
 
 def serve_file(fpath: Path, mime: str):
-    """Serve a file directly. No streaming, no chunking, no ranges — just FileResponse."""
-    return FileResponse(path=str(fpath), media_type=mime)
+    """Serve a file as a plain 200 response. No ranges, no 206."""
+    file_size = fpath.stat().st_size
+
+    def iterfile():
+        with open(fpath, "rb") as f:
+            while data := f.read(1024 * 1024):
+                yield data
+
+    return StreamingResponse(
+        iterfile(),
+        media_type=mime,
+        headers={"Content-Length": str(file_size)},
+    )
 
 
 # ── FastAPI App ──────────────────────────────────────────────────────────────
