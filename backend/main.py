@@ -201,7 +201,30 @@ def classify_file(filename: str) -> str:
     return "other"
 
 
+# Explicit MIME map — mimetypes.guess_type() returns None on some OS/configs
+_MIME_MAP = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".ogg": "video/ogg",
+    ".mov": "video/quicktime",
+    ".avi": "video/x-msvideo",
+    ".mkv": "video/x-matroska",
+    ".m4v": "video/mp4",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".tiff": "image/tiff",
+    ".svg": "image/svg+xml",
+}
+
+
 def guess_mime(filename: str) -> str:
+    ext = Path(filename).suffix.lower()
+    if ext in _MIME_MAP:
+        return _MIME_MAP[ext]
     mime, _ = mimetypes.guess_type(filename)
     return mime or "application/octet-stream"
 
@@ -251,8 +274,13 @@ def make_thumbnail(src: Path, dst: Path) -> bool:
         return False
 
 
+# Max bytes per range response — prevents trying to stream 20 GB in one response
+# (Cloudflare and other proxies kill oversized streams)
+RANGE_CHUNK_MAX = 2 * 1024 * 1024  # 2 MB
+
+
 def stream_file(fpath: Path, request: Request, mime: str):
-    """Stream a file with optional range-request support (for video seeking)."""
+    """Stream a file with range-request support for video seeking."""
     file_size = fpath.stat().st_size
     range_header = request.headers.get("range")
 
@@ -260,9 +288,15 @@ def stream_file(fpath: Path, request: Request, mime: str):
         m = re.match(r"bytes=(\d+)-(\d*)", range_header)
         if m:
             start = int(m.group(1))
-            end = int(m.group(2)) if m.group(2) else file_size - 1
+            # If end not specified (open range like "bytes=0-"), cap to RANGE_CHUNK_MAX
+            if m.group(2):
+                end = int(m.group(2))
+            else:
+                end = min(start + RANGE_CHUNK_MAX - 1, file_size - 1)
+
             if start >= file_size:
                 raise HTTPException(status_code=416, detail="Range not satisfiable")
+            end = min(end, file_size - 1)
             length = end - start + 1
 
             def ranged():

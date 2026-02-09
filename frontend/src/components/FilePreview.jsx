@@ -72,6 +72,8 @@ export default function FilePreview({ file, onClose, onPrev, onNext, hasPrev, ha
             src={previewUrl}
             controls
             autoPlay
+            preload="metadata"
+            playsInline
             className="max-w-full max-h-[85vh] rounded-lg shadow-2xl bg-black"
             style={{ minWidth: '320px' }}
           />
