@@ -4,6 +4,7 @@ Run:  MEDIA_DIR=/path/to/photos python main.py
 """
 
 import os
+import re
 import uuid
 import hashlib
 import zipfile
@@ -20,7 +21,7 @@ from fastapi import (
     Body, Query, Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -273,19 +274,53 @@ def make_thumbnail(src: Path, dst: Path) -> bool:
         return False
 
 
-def serve_file(fpath: Path, mime: str):
-    """Serve a file as a plain 200 response. No ranges, no 206."""
+def serve_file(fpath: Path, request: Request, mime: str):
+    """Serve a file with range-request support (required for video playback)."""
     file_size = fpath.stat().st_size
+    range_header = request.headers.get("range")
+
+    if range_header:
+        m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        if m:
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else file_size - 1
+
+            if start >= file_size:
+                raise HTTPException(status_code=416, detail="Range not satisfiable")
+            end = min(end, file_size - 1)
+            length = end - start + 1
+
+            def ranged():
+                with open(fpath, "rb") as fp:
+                    fp.seek(start)
+                    remaining = length
+                    while remaining > 0:
+                        chunk = fp.read(min(1024 * 1024, remaining))
+                        if not chunk:
+                            break
+                        remaining -= len(chunk)
+                        yield chunk
+
+            return StreamingResponse(
+                ranged(),
+                status_code=206,
+                media_type=mime,
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(length),
+                },
+            )
 
     def iterfile():
-        with open(fpath, "rb") as f:
-            while data := f.read(1024 * 1024):
-                yield data
+        with open(fpath, "rb") as fp:
+            while chunk := fp.read(1024 * 1024):
+                yield chunk
 
     return StreamingResponse(
         iterfile(),
         media_type=mime,
-        headers={"Content-Length": str(file_size)},
+        headers={"Accept-Ranges": "bytes", "Content-Length": str(file_size)},
     )
 
 
@@ -502,12 +537,12 @@ def stats(path: str = "/", user=Depends(get_current_user)):
 
 
 @app.get("/api/files/preview")
-def preview_file(path: str, user=Depends(get_current_user)):
+def preview_file(path: str, request: Request, user=Depends(get_current_user)):
     fpath = safe_resolve(path)
     if not fpath.exists() or not fpath.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     mime = guess_mime(fpath.name)
-    return serve_file(fpath, mime)
+    return serve_file(fpath, request, mime)
 
 
 @app.get("/api/files/thumbnail")
