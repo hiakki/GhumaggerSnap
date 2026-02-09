@@ -1,7 +1,7 @@
 @echo off
 REM ──────────────────────────────────────────────────────────
 REM GhumaggerSnap — Share with friends over the internet
-REM Usage: share.bat [MEDIA_DIR_PATH]
+REM Usage: share.bat [MEDIA_DIR] [USERNAME] [PASSWORD]
 REM ──────────────────────────────────────────────────────────
 setlocal EnableDelayedExpansion
 set "ROOT=%~dp0"
@@ -13,10 +13,13 @@ echo   GhumaggerSnap — Share with Friends
 echo =============================================
 echo.
 
+REM ── Parse args: share.bat [MEDIA_DIR] [USERNAME] [PASSWORD]
+if not "%~1"=="" set "MEDIA_DIR=%~1"
+if not "%~2"=="" set "ADMIN_USER=%~2"
+if not "%~3"=="" set "ADMIN_PASS=%~3"
+
 REM ── MEDIA_DIR ─────────────────────────────────
-if not "%~1"=="" (
-    set "MEDIA_DIR=%~1"
-) else if "%MEDIA_DIR%"=="" (
+if "%MEDIA_DIR%"=="" (
     echo   Step 1: Media Directory
     echo.
     echo   Examples: D:\TripPhotos, E:\DCIM\Camera

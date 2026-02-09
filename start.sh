@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────
 # GhumaggerSnap — start script (Linux / macOS)
-# Usage: ./start.sh [MEDIA_DIR_PATH]
+# Usage: ./start.sh [MEDIA_DIR] [USERNAME] [PASSWORD]
 # ──────────────────────────────────────────────
 set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -19,9 +19,12 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-# ── MEDIA_DIR ─────────────────────────────────
-# Accept from: 1) command-line arg  2) env var  3) prompt
+# ── Parse args: ./start.sh [MEDIA_DIR] [USERNAME] [PASSWORD]
 MEDIA_DIR="${1:-$MEDIA_DIR}"
+ADMIN_USER="${2:-$ADMIN_USER}"
+ADMIN_PASS="${3:-$ADMIN_PASS}"
+
+# ── MEDIA_DIR ─────────────────────────────────
 if [ -z "$MEDIA_DIR" ]; then
   echo ""
   echo -e "${BOLD}GhumaggerSnap — Media Directory Setup${NC}"
@@ -49,11 +52,11 @@ export MEDIA_DIR
 ok "Media directory: $MEDIA_DIR"
 
 # ── Admin credentials ─────────────────────────
-if [ -z "$ADMIN_USER" ]; then
+if [ -z "$ADMIN_USER" ] || [ -z "$ADMIN_PASS" ]; then
   echo ""
   echo -e "${BOLD}Admin Account Setup${NC}"
-  read -p "  Enter admin username: " ADMIN_USER
-  read -s -p "  Enter admin password: " ADMIN_PASS
+  [ -z "$ADMIN_USER" ] && read -p "  Enter admin username: " ADMIN_USER
+  [ -z "$ADMIN_PASS" ] && read -s -p "  Enter admin password: " ADMIN_PASS
   echo ""
 fi
 

@@ -1,7 +1,7 @@
 @echo off
 REM ──────────────────────────────────────────────
 REM GhumaggerSnap — start script (Windows)
-REM Usage: start.bat [MEDIA_DIR_PATH]
+REM Usage: start.bat [MEDIA_DIR] [USERNAME] [PASSWORD]
 REM ──────────────────────────────────────────────
 setlocal EnableDelayedExpansion
 set "ROOT=%~dp0"
@@ -13,10 +13,13 @@ echo   GhumaggerSnap — Starting...
 echo =============================================
 echo.
 
+REM ── Parse args: start.bat [MEDIA_DIR] [USERNAME] [PASSWORD]
+if not "%~1"=="" set "MEDIA_DIR=%~1"
+if not "%~2"=="" set "ADMIN_USER=%~2"
+if not "%~3"=="" set "ADMIN_PASS=%~3"
+
 REM ── MEDIA_DIR ─────────────────────────────────
-if not "%~1"=="" (
-    set "MEDIA_DIR=%~1"
-) else if "%MEDIA_DIR%"=="" (
+if "%MEDIA_DIR%"=="" (
     echo   Point this to the folder containing your trip photos/videos.
     echo   This can be a local directory, USB drive, or external hard drive.
     echo.
