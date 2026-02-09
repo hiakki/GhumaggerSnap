@@ -1,7 +1,60 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { api } from '../api';
-import { X, ChevronLeft, ChevronRight, Download, FileIcon } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Download, FileIcon, Loader2 } from 'lucide-react';
 import { fmtSize } from './FileCard';
+
+function VideoPlayer({ file }) {
+  const videoRef = useRef(null);
+  const [useCompat, setUseCompat] = useState(false);
+  const [transcoding, setTranscoding] = useState(false);
+  const triedCompat = useRef(false);
+
+  const src = useCompat
+    ? api.previewCompatUrl(file.path)
+    : api.previewUrl(file.path);
+
+  const handleError = () => {
+    // Native playback failed → retry with server-side transcode
+    if (!triedCompat.current) {
+      triedCompat.current = true;
+      setTranscoding(true);
+      setUseCompat(true);
+    }
+  };
+
+  const handleCanPlay = () => {
+    setTranscoding(false);
+  };
+
+  // Reset when file changes
+  useEffect(() => {
+    triedCompat.current = false;
+    setUseCompat(false);
+    setTranscoding(false);
+  }, [file.path]);
+
+  return (
+    <div className="relative flex items-center justify-center">
+      {transcoding && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-black/60 rounded-lg">
+          <Loader2 className="w-10 h-10 text-white animate-spin mb-3" />
+          <p className="text-white text-sm">Converting video for playback...</p>
+        </div>
+      )}
+      <video
+        ref={videoRef}
+        key={src}
+        src={src}
+        controls
+        autoPlay
+        onError={handleError}
+        onCanPlay={handleCanPlay}
+        className="max-w-full max-h-[85vh] rounded-lg shadow-2xl bg-black"
+        style={{ minWidth: '320px' }}
+      />
+    </div>
+  );
+}
 
 export default function FilePreview({ file, onClose, onPrev, onNext, hasPrev, hasNext }) {
   const isImg = file.file_type === 'image';
@@ -67,15 +120,7 @@ export default function FilePreview({ file, onClose, onPrev, onNext, hasPrev, ha
             draggable={false}
           />
         ) : isVid ? (
-          <video
-            key={file.path}
-            src={previewUrl}
-            controls
-            autoPlay
-            preload="auto"
-            className="max-w-full max-h-[85vh] rounded-lg shadow-2xl bg-black"
-            style={{ minWidth: '320px' }}
-          />
+          <VideoPlayer file={file} />
         ) : (
           <div className="flex flex-col items-center gap-4 text-white/80 p-8">
             <FileIcon className="w-20 h-20" />
