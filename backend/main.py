@@ -274,53 +274,8 @@ def make_thumbnail(src: Path, dst: Path) -> bool:
         return False
 
 
-# Max bytes per range response — prevents trying to stream 20 GB in one response
-# (Cloudflare and other proxies kill oversized streams)
-RANGE_CHUNK_MAX = 2 * 1024 * 1024  # 2 MB
-
-
 def stream_file(fpath: Path, request: Request, mime: str):
-    """Stream a file with range-request support for video seeking."""
-    file_size = fpath.stat().st_size
-    range_header = request.headers.get("range")
-
-    if range_header:
-        m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-        if m:
-            start = int(m.group(1))
-            # If end not specified (open range like "bytes=0-"), cap to RANGE_CHUNK_MAX
-            if m.group(2):
-                end = int(m.group(2))
-            else:
-                end = min(start + RANGE_CHUNK_MAX - 1, file_size - 1)
-
-            if start >= file_size:
-                raise HTTPException(status_code=416, detail="Range not satisfiable")
-            end = min(end, file_size - 1)
-            length = end - start + 1
-
-            def ranged():
-                with open(fpath, "rb") as fp:
-                    fp.seek(start)
-                    remaining = length
-                    while remaining > 0:
-                        chunk = fp.read(min(1024 * 1024, remaining))
-                        if not chunk:
-                            break
-                        remaining -= len(chunk)
-                        yield chunk
-
-            return StreamingResponse(
-                ranged(),
-                status_code=206,
-                media_type=mime,
-                headers={
-                    "Content-Range": f"bytes {start}-{end}/{file_size}",
-                    "Accept-Ranges": "bytes",
-                    "Content-Length": str(length),
-                },
-            )
-
+    """Stream a file without range support (full response)."""
     def iterfile():
         with open(fpath, "rb") as fp:
             while chunk := fp.read(1024 * 1024):
@@ -329,7 +284,7 @@ def stream_file(fpath: Path, request: Request, mime: str):
     return StreamingResponse(
         iterfile(),
         media_type=mime,
-        headers={"Accept-Ranges": "bytes", "Content-Length": str(file_size)},
+        headers={"Content-Length": str(fpath.stat().st_size)},
     )
 
 
