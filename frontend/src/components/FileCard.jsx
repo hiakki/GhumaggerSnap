@@ -78,7 +78,7 @@ export default function FileCard({ file, selected, selecting, onSelect, onPrevie
 
   const isImg  = file.file_type === 'image';
   const isVid  = file.file_type === 'video';
-  const showThumb = isImg && !thumbErr;
+  const showThumb = (isImg || isVid) && !thumbErr;
 
   return (
     <div
@@ -100,22 +100,22 @@ export default function FileCard({ file, selected, selecting, onSelect, onPrevie
       {/* Thumbnail area */}
       <div className="relative aspect-[4/3] bg-gray-50 flex items-center justify-center overflow-hidden">
         {showThumb ? (
-          <img
-            src={api.thumbnailUrl(file.path)}
-            alt={file.name}
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-            onError={() => setThumbErr(true)}
-            loading="lazy"
-          />
-        ) : isVid ? (
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-14 h-14 rounded-full bg-purple-100 flex items-center justify-center">
-              <Play className="w-7 h-7 text-purple-500 ml-0.5" />
-            </div>
-            <span className="text-xs text-purple-400 font-medium uppercase tracking-wide">
-              {file.name.split('.').pop()}
-            </span>
-          </div>
+          <>
+            <img
+              src={api.thumbnailUrl(file.path)}
+              alt={file.name}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              onError={() => setThumbErr(true)}
+              loading="lazy"
+            />
+            {isVid && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/60 group-hover:scale-110 transition-all duration-200">
+                  <Play className="w-6 h-6 text-white ml-0.5" />
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex flex-col items-center gap-2">
             {typeIcon[file.file_type] || typeIcon.other}
@@ -167,6 +167,8 @@ export function FileRow({ file, selected, selecting, onSelect, onPreview, onDown
   const [menuOpen, setMenuOpen] = useState(false);
   const [thumbErr, setThumbErr] = useState(false);
   const isImg = file.file_type === 'image';
+  const isVid = file.file_type === 'video';
+  const showThumb = (isImg || isVid) && !thumbErr;
 
   return (
     <div
@@ -188,11 +190,16 @@ export function FileRow({ file, selected, selecting, onSelect, onPreview, onDown
       </div>
 
       {/* Icon / Thumb */}
-      <div className="shrink-0 w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden">
-        {isImg && !thumbErr ? (
-          <img src={api.thumbnailUrl(file.path)} className="w-full h-full object-cover" onError={() => setThumbErr(true)} loading="lazy" />
-        ) : file.file_type === 'video' ? (
-          <Play className="w-5 h-5 text-purple-400" />
+      <div className="shrink-0 w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden relative">
+        {showThumb ? (
+          <>
+            <img src={api.thumbnailUrl(file.path)} className="w-full h-full object-cover" onError={() => setThumbErr(true)} loading="lazy" />
+            {isVid && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Play className="w-4 h-4 text-white drop-shadow-md" />
+              </div>
+            )}
+          </>
         ) : (
           <FileIcon className="w-5 h-5 text-gray-400" />
         )}

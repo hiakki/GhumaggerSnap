@@ -66,9 +66,15 @@ export const api = {
   },
 
   /* URL builders (token in query for <img>/<video>) */
-  previewUrl(filePath)   { return `${API}/files/preview?path=${encodeURIComponent(filePath)}&token=${getToken()}`; },
-  thumbnailUrl(filePath) { return `${API}/files/thumbnail?path=${encodeURIComponent(filePath)}&token=${getToken()}`; },
-  downloadUrl(filePath)  { return `${API}/files/download?path=${encodeURIComponent(filePath)}&token=${getToken()}`; },
+  previewUrl(filePath)       { return `${API}/files/preview?path=${encodeURIComponent(filePath)}&token=${getToken()}`; },
+  previewCompatUrl(filePath) { return `${API}/files/preview?path=${encodeURIComponent(filePath)}&compat=1&token=${getToken()}`; },
+  thumbnailUrl(filePath)     { return `${API}/files/thumbnail?path=${encodeURIComponent(filePath)}&token=${getToken()}`; },
+  downloadUrl(filePath)      { return `${API}/files/download?path=${encodeURIComponent(filePath)}&token=${getToken()}`; },
+
+  async getVideoInfo(filePath) {
+    const q = new URLSearchParams({ path: filePath });
+    return (await req(`/files/video-info?${q}`)).json();
+  },
 
   /* Downloads */
   downloadFile(filePath, fileName) {

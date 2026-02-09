@@ -6,10 +6,12 @@ Run:  MEDIA_DIR=/path/to/photos python main.py
 import os
 import re
 import uuid
+import shutil
 import hashlib
 import zipfile
 import sqlite3
 import mimetypes
+import subprocess
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
@@ -263,6 +265,7 @@ def thumb_key(fpath: Path) -> str:
 
 
 def make_thumbnail(src: Path, dst: Path) -> bool:
+    """Generate thumbnail for an image file."""
     try:
         with Image.open(src) as img:
             img.thumbnail(THUMBNAIL_SIZE, Image.LANCZOS)
@@ -270,6 +273,29 @@ def make_thumbnail(src: Path, dst: Path) -> bool:
                 img = img.convert("RGB")
             img.save(dst, "JPEG", quality=85)
             return True
+    except Exception:
+        return False
+
+
+def make_video_thumbnail(src: Path, dst: Path) -> bool:
+    """Extract first frame of a video via ffmpeg and save as JPEG thumbnail."""
+    if not FFMPEG:
+        return False
+    try:
+        subprocess.run(
+            [
+                FFMPEG,
+                "-i", str(src),
+                "-ss", "00:00:01",       # 1 second in (avoids blank frames)
+                "-vframes", "1",
+                "-vf", f"scale={THUMBNAIL_SIZE[0]}:{THUMBNAIL_SIZE[1]}:force_original_aspect_ratio=decrease",
+                "-q:v", "5",
+                "-y",                     # overwrite
+                str(dst),
+            ],
+            capture_output=True, timeout=30,
+        )
+        return dst.exists() and dst.stat().st_size > 0
     except Exception:
         return False
 
@@ -322,6 +348,59 @@ def serve_file(fpath: Path, request: Request, mime: str):
         media_type=mime,
         headers={"Accept-Ranges": "bytes", "Content-Length": str(file_size)},
     )
+
+
+# ── FFmpeg helpers ───────────────────────────────────────────────────────────
+FFMPEG = shutil.which("ffmpeg")
+FFPROBE = shutil.which("ffprobe")
+
+# Codecs that browsers handle natively
+_BROWSER_CODECS = {"h264", "vp8", "vp9", "av1", "theora"}
+
+
+def probe_video_codec(fpath: Path) -> Optional[str]:
+    """Return the video codec name (e.g. 'hevc', 'h264') or None."""
+    if not FFPROBE:
+        return None
+    try:
+        r = subprocess.run(
+            [FFPROBE, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name", "-of", "csv=p=0",
+             str(fpath)],
+            capture_output=True, text=True, timeout=10,
+        )
+        return r.stdout.strip().lower() or None
+    except Exception:
+        return None
+
+
+def transcode_h264_stream(fpath: Path):
+    """Pipe ffmpeg output as fragmented MP4 (H.264/AAC) for browser playback."""
+    proc = subprocess.Popen(
+        [FFMPEG,
+         "-i", str(fpath),
+         "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+         "-c:a", "aac", "-b:a", "128k",
+         "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+         "-f", "mp4",
+         "-loglevel", "error",
+         "pipe:1"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+
+    def generate():
+        try:
+            while True:
+                chunk = proc.stdout.read(65536)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            proc.stdout.close()
+            proc.stderr.close()
+            proc.wait()
+
+    return StreamingResponse(generate(), media_type="video/mp4")
 
 
 # ── FastAPI App ──────────────────────────────────────────────────────────────
@@ -536,12 +615,37 @@ def stats(path: str = "/", user=Depends(get_current_user)):
     return {"total_files": count, "total_size": total_size, "by_type": by_type}
 
 
+@app.get("/api/files/video-info")
+def video_info(path: str, user=Depends(get_current_user)):
+    """Quick probe: returns codec and whether transcoding is needed."""
+    fpath = safe_resolve(path)
+    if not fpath.exists() or not fpath.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    codec = probe_video_codec(fpath)
+    needs_transcode = codec is not None and codec not in _BROWSER_CODECS
+    return {
+        "codec": codec,
+        "needs_transcode": needs_transcode,
+        "ffmpeg_available": FFMPEG is not None,
+    }
+
+
 @app.get("/api/files/preview")
-def preview_file(path: str, request: Request, user=Depends(get_current_user)):
+def preview_file(
+    path: str,
+    request: Request,
+    compat: int = 0,
+    user=Depends(get_current_user),
+):
     fpath = safe_resolve(path)
     if not fpath.exists() or not fpath.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     mime = guess_mime(fpath.name)
+
+    # compat=1 → transcode HEVC/etc. to H.264 via ffmpeg for browser playback
+    if compat and classify_file(fpath.name) == "video" and FFMPEG:
+        return transcode_h264_stream(fpath)
+
     return serve_file(fpath, request, mime)
 
 
@@ -552,14 +656,18 @@ def get_thumbnail(path: str, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="File not found")
 
     ftype = classify_file(fpath.name)
-    if ftype != "image":
-        raise HTTPException(status_code=404, detail="No thumbnail for non-image")
+    if ftype not in ("image", "video"):
+        raise HTTPException(status_code=404, detail="No thumbnail for this file type")
 
     key = thumb_key(fpath)
     thumb_path = THUMBNAIL_DIR / f"{key}.jpg"
 
     if not thumb_path.exists():
-        if not make_thumbnail(fpath, thumb_path):
+        if ftype == "image":
+            ok = make_thumbnail(fpath, thumb_path)
+        else:
+            ok = make_video_thumbnail(fpath, thumb_path)
+        if not ok:
             raise HTTPException(status_code=500, detail="Thumbnail generation failed")
 
     return StreamingResponse(open(thumb_path, "rb"), media_type="image/jpeg")
