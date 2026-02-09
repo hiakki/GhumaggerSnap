@@ -275,7 +275,43 @@ def make_thumbnail(src: Path, dst: Path) -> bool:
 
 
 def stream_file(fpath: Path, request: Request, mime: str):
-    """Stream a file without range support (full response)."""
+    """Stream a file with full range-request support for video seeking."""
+    file_size = fpath.stat().st_size
+    range_header = request.headers.get("range")
+
+    if range_header:
+        m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        if m:
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else file_size - 1
+
+            if start >= file_size:
+                raise HTTPException(status_code=416, detail="Range not satisfiable")
+            end = min(end, file_size - 1)
+            length = end - start + 1
+
+            def ranged():
+                with open(fpath, "rb") as fp:
+                    fp.seek(start)
+                    remaining = length
+                    while remaining > 0:
+                        chunk = fp.read(min(1024 * 1024, remaining))
+                        if not chunk:
+                            break
+                        remaining -= len(chunk)
+                        yield chunk
+
+            return StreamingResponse(
+                ranged(),
+                status_code=206,
+                media_type=mime,
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(length),
+                },
+            )
+
     def iterfile():
         with open(fpath, "rb") as fp:
             while chunk := fp.read(1024 * 1024):
@@ -284,7 +320,7 @@ def stream_file(fpath: Path, request: Request, mime: str):
     return StreamingResponse(
         iterfile(),
         media_type=mime,
-        headers={"Content-Length": str(fpath.stat().st_size)},
+        headers={"Accept-Ranges": "bytes", "Content-Length": str(file_size)},
     )
 
 
