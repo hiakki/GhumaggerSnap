@@ -69,14 +69,14 @@ export default function FilePreview({ file, onClose, onPrev, onNext, hasPrev, ha
         ) : isVid ? (
           <video
             key={file.path}
-            src={previewUrl}
             controls
             autoPlay
-            preload="metadata"
-            playsInline
+            preload="auto"
             className="max-w-full max-h-[85vh] rounded-lg shadow-2xl bg-black"
             style={{ minWidth: '320px' }}
-          />
+          >
+            <source src={previewUrl} type={file.mime_type || 'video/mp4'} />
+          </video>
         ) : (
           <div className="flex flex-col items-center gap-4 text-white/80 p-8">
             <FileIcon className="w-20 h-20" />
