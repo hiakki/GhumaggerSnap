@@ -4,15 +4,11 @@ Run:  MEDIA_DIR=/path/to/photos python main.py
 """
 
 import os
-import re
 import uuid
-import shutil
 import hashlib
 import zipfile
 import sqlite3
-import logging
 import mimetypes
-import subprocess
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
@@ -24,15 +20,13 @@ from fastapi import (
     Body, Query, Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import jwt
 import bcrypt
 from PIL import Image
-
-log = logging.getLogger("ghumaggersnap")
 
 # ── Configuration ────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -279,110 +273,9 @@ def make_thumbnail(src: Path, dst: Path) -> bool:
         return False
 
 
-def stream_file(fpath: Path, request: Request, mime: str):
-    """Stream a file with range-request support for video seeking."""
-    file_size = fpath.stat().st_size
-    range_header = request.headers.get("range")
-
-    if range_header:
-        m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-        if m:
-            start = int(m.group(1))
-            end = int(m.group(2)) if m.group(2) else file_size - 1
-
-            if start >= file_size:
-                raise HTTPException(status_code=416, detail="Range not satisfiable")
-            end = min(end, file_size - 1)
-            length = end - start + 1
-
-            def ranged():
-                with open(fpath, "rb") as fp:
-                    fp.seek(start)
-                    remaining = length
-                    while remaining > 0:
-                        chunk = fp.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        remaining -= len(chunk)
-                        yield chunk
-
-            return StreamingResponse(
-                ranged(),
-                status_code=206,
-                media_type=mime,
-                headers={
-                    "Content-Range": f"bytes {start}-{end}/{file_size}",
-                    "Accept-Ranges": "bytes",
-                    "Content-Length": str(length),
-                },
-            )
-
-    def iterfile():
-        with open(fpath, "rb") as fp:
-            while chunk := fp.read(1024 * 1024):
-                yield chunk
-
-    return StreamingResponse(
-        iterfile(),
-        media_type=mime,
-        headers={"Accept-Ranges": "bytes", "Content-Length": str(file_size)},
-    )
-
-
-# ── FFmpeg transcoding (HEVC → H.264 for browser compat) ────────────────────
-FFMPEG_PATH = shutil.which("ffmpeg")
-FFPROBE_PATH = shutil.which("ffprobe")
-
-
-def needs_transcode(fpath: Path) -> bool:
-    """Check if a video file uses a codec the browser can't play (e.g. HEVC)."""
-    if not FFPROBE_PATH:
-        return False
-    try:
-        result = subprocess.run(
-            [
-                FFPROBE_PATH, "-v", "error",
-                "-select_streams", "v:0",
-                "-show_entries", "stream=codec_name",
-                "-of", "csv=p=0",
-                str(fpath),
-            ],
-            capture_output=True, text=True, timeout=10,
-        )
-        codec = result.stdout.strip().lower()
-        # These codecs are NOT natively supported by most browsers
-        return codec in ("hevc", "h265", "av1", "vp6", "mpeg2video", "mpeg4")
-    except Exception:
-        return False
-
-
-def transcode_to_h264(fpath: Path):
-    """Transcode video to H.264/AAC via ffmpeg, streaming fragmented MP4."""
-    cmd = [
-        FFMPEG_PATH,
-        "-i", str(fpath),
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k",
-        "-movflags", "frag_keyframe+empty_moov+default_base_moof",
-        "-f", "mp4",
-        "-loglevel", "error",
-        "pipe:1",
-    ]
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    def generate():
-        try:
-            while True:
-                chunk = process.stdout.read(65536)
-                if not chunk:
-                    break
-                yield chunk
-        finally:
-            process.stdout.close()
-            process.stderr.close()
-            process.wait()
-
-    return StreamingResponse(generate(), media_type="video/mp4")
+def serve_file(fpath: Path, mime: str):
+    """Serve a file directly. No streaming, no chunking, no ranges — just FileResponse."""
+    return FileResponse(path=str(fpath), media_type=mime)
 
 
 # ── FastAPI App ──────────────────────────────────────────────────────────────
@@ -598,23 +491,12 @@ def stats(path: str = "/", user=Depends(get_current_user)):
 
 
 @app.get("/api/files/preview")
-def preview_file(
-    path: str,
-    request: Request,
-    compat: int = 0,
-    user=Depends(get_current_user),
-):
+def preview_file(path: str, user=Depends(get_current_user)):
     fpath = safe_resolve(path)
     if not fpath.exists() or not fpath.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     mime = guess_mime(fpath.name)
-
-    # If compat mode requested (browser couldn't play natively) → transcode
-    if compat and classify_file(fpath.name) == "video" and FFMPEG_PATH:
-        log.info("Transcoding %s to H.264 for browser compat", fpath.name)
-        return transcode_to_h264(fpath)
-
-    return stream_file(fpath, request, mime)
+    return serve_file(fpath, mime)
 
 
 @app.get("/api/files/thumbnail")
