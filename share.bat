@@ -2,8 +2,6 @@
 REM ──────────────────────────────────────────────────────────
 REM GhumaggerSnap — Share with friends over the internet
 REM Usage: share.bat [MEDIA_DIR_PATH]
-REM
-REM Uses localtunnel (npm) — no extra installs needed.
 REM ──────────────────────────────────────────────────────────
 setlocal EnableDelayedExpansion
 set "ROOT=%~dp0"
@@ -21,13 +19,11 @@ if not "%~1"=="" (
 ) else if "%MEDIA_DIR%"=="" (
     echo   Step 1: Media Directory
     echo.
-    echo   Point this to the folder containing your trip photos/videos.
     echo   Examples: D:\TripPhotos, E:\DCIM\Camera
     echo.
     set /p "MEDIA_DIR=  Enter media directory path: "
 )
 
-REM Strip trailing backslashes/slashes (causes WinError 3 on some drives)
 if "%MEDIA_DIR:~-1%"=="\" set "MEDIA_DIR=%MEDIA_DIR:~0,-1%"
 if "%MEDIA_DIR:~-1%"=="/" set "MEDIA_DIR=%MEDIA_DIR:~0,-1%"
 
@@ -46,111 +42,93 @@ if "%ADMIN_USER%"=="" (
     set /p "ADMIN_USER=  Enter admin username: "
     set /p "ADMIN_PASS=  Enter admin password: "
 )
-
-if "%ADMIN_USER%"=="" (
-    echo [ERR] Username cannot be empty.
-    pause
-    exit /b 1
-)
-if "%ADMIN_PASS%"=="" (
-    echo [ERR] Password cannot be empty.
-    pause
-    exit /b 1
-)
+if "%ADMIN_USER%"=="" ( echo [ERR] Username cannot be empty. & pause & exit /b 1 )
+if "%ADMIN_PASS%"=="" ( echo [ERR] Password cannot be empty. & pause & exit /b 1 )
 echo [OK]   Admin user: %ADMIN_USER%
 
-REM ── Subdomain ─────────────────────────────────
+REM ── Tunnel method ─────────────────────────────
 echo.
-echo   Step 3: Choose a subdomain (for a stable URL)
+echo   Step 3: Choose tunnel method
 echo.
-echo   Pick a unique name so your URL stays the same each time.
-echo   Your friends will access: https://NAME.loca.lt
-echo   Leave empty for a random URL.
+echo   1) localtunnel   (default, uses npm, zero extra install)
+echo   2) Cloudflare     (needs cloudflared - run setup-tunnel.bat)
+echo   3) Serveo SSH     (needs ssh / Git Bash)
 echo.
-set /p "SUBDOMAIN=  Enter subdomain (e.g. ghumaggersnap): "
+if "%TUNNEL%"=="" set /p "TUNNEL=  Enter choice (1/2/3) [1]: "
+if "%TUNNEL%"=="" set "TUNNEL=1"
 
-REM ── Check Python ──────────────────────────────
-where python >nul 2>nul
-if %ERRORLEVEL% neq 0 (
-    echo [ERR] Python 3 is required. Download from https://python.org
-    pause
-    exit /b 1
+if "%TUNNEL%"=="1" (
+    if "%SUBDOMAIN%"=="" (
+        echo.
+        echo   Choose a subdomain (optional, leave empty for random)
+        set /p "SUBDOMAIN=  Enter subdomain: "
+    )
 )
-for /f "tokens=*" %%i in ('python --version') do echo [INFO] Using %%i
 
-REM ── Check Node ────────────────────────────────
-where node >nul 2>nul
-if %ERRORLEVEL% neq 0 (
-    echo [ERR] Node.js is required. Download from https://nodejs.org
-    pause
-    exit /b 1
+REM ── Check Python + Node ───────────────────────
+where python >nul 2>nul || ( echo [ERR] Python 3 required. & pause & exit /b 1 )
+where node >nul 2>nul || ( echo [ERR] Node.js required. & pause & exit /b 1 )
+
+if "%TUNNEL%"=="2" (
+    where cloudflared >nul 2>nul || ( echo [ERR] cloudflared not found. Run setup-tunnel.bat & pause & exit /b 1 )
 )
-for /f "tokens=*" %%i in ('node --version') do echo [INFO] Using Node %%i
+if "%TUNNEL%"=="3" (
+    where ssh >nul 2>nul || ( echo [ERR] ssh not found. Install OpenSSH or Git Bash. & pause & exit /b 1 )
+)
 
 REM ── Backend setup ─────────────────────────────
 echo [INFO] Setting up backend...
 cd /d "%ROOT%backend"
-if not exist "venv" (
-    echo [INFO] Creating Python virtual environment...
-    python -m venv venv
-)
+if not exist "venv" ( python -m venv venv )
 call venv\Scripts\activate.bat
 pip install -q -r requirements.txt
 echo [OK]   Backend ready
 
 REM ── Frontend build ────────────────────────────
-echo [INFO] Building frontend for production...
+echo [INFO] Building frontend...
 cd /d "%ROOT%frontend"
-if not exist "node_modules" (
-    echo [INFO] Installing frontend dependencies...
-    call npm install --silent
-)
+if not exist "node_modules" ( call npm install --silent )
 call npx vite build
 echo [OK]   Frontend built
 
-REM ── Install localtunnel ───────────────────────
-echo [INFO] Installing localtunnel...
-call npm install --save-dev localtunnel --silent
-echo [OK]   localtunnel ready
-
-REM ── Start backend (production mode) ───────────
-echo.
-echo [INFO] Starting backend in production mode...
+REM ── Start backend ─────────────────────────────
+echo [INFO] Starting backend...
 cd /d "%ROOT%backend"
 start "GhumaggerSnap-Backend" /min cmd /c "set MEDIA_DIR=%MEDIA_DIR% && set ADMIN_USER=%ADMIN_USER% && set ADMIN_PASS=%ADMIN_PASS% && venv\Scripts\activate.bat && python main.py"
-
 timeout /t 3 /nobreak >nul
 echo [OK]   Backend running on http://localhost:8000
 
 REM ── Start tunnel ──────────────────────────────
 echo.
 echo =============================================
-echo   Starting public tunnel...
+echo   Starting tunnel...
 echo =============================================
 echo.
-
-if not "%SUBDOMAIN%"=="" (
-    echo   Your public URL: https://%SUBDOMAIN%.loca.lt
-) else (
-    echo   Your public URL will appear below.
-)
-echo.
-echo   Share this URL with your friends!
+echo   Share the URL with your friends!
 echo   Login: %ADMIN_USER% / [your password]
 echo   Media: %MEDIA_DIR%
-echo.
-echo   Note: On first visit, friends may see a localtunnel
-echo   reminder page -- they just click "Click to Continue".
 echo.
 echo   Close this window to stop sharing.
 echo =============================================
 echo.
 
 cd /d "%ROOT%frontend"
-if not "%SUBDOMAIN%"=="" (
-    npx localtunnel --port 8000 --subdomain %SUBDOMAIN%
-) else (
-    npx localtunnel --port 8000
+
+if "%TUNNEL%"=="1" (
+    call npm install --save-dev localtunnel --silent
+    if not "%SUBDOMAIN%"=="" (
+        npx localtunnel --subdomain %SUBDOMAIN% --local-host 127.0.0.1 --port 8000
+    ) else (
+        npx localtunnel --local-host 127.0.0.1 --port 8000
+    )
+)
+
+if "%TUNNEL%"=="2" (
+    cloudflared tunnel --url http://localhost:8000
+)
+
+if "%TUNNEL%"=="3" (
+    ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 80:localhost:8000 serveo.net
 )
 
 pause
