@@ -148,29 +148,40 @@ ok "Backend running on http://localhost:8000 (PID: $BACKEND_PID)"
 echo ""
 info "Starting public tunnel..."
 
-LT_ARGS="--port 8000"
+LT_ARGS="--local-host 127.0.0.1 --port 8000"
 if [ -n "$SUBDOMAIN" ]; then
-  LT_ARGS="$LT_ARGS --subdomain $SUBDOMAIN"
+  LT_ARGS="--subdomain $SUBDOMAIN $LT_ARGS"
 fi
 
 cd "$ROOT/frontend"
 
-# Start localtunnel and capture the URL
-npx localtunnel $LT_ARGS &
+# Start localtunnel, capture output to extract the actual URL
+LT_LOG="/tmp/ghumaggersnap-tunnel-$$.log"
+npx localtunnel $LT_ARGS 2>&1 | tee "$LT_LOG" &
 TUNNEL_PID=$!
 
-# Wait for tunnel to establish
-sleep 3
+# Wait and extract the actual URL localtunnel gave us
+ACTUAL_URL=""
+for i in $(seq 1 15); do
+  sleep 1
+  ACTUAL_URL=$(grep -o 'https://[^ ]*\.loca\.lt' "$LT_LOG" 2>/dev/null | head -1)
+  [ -n "$ACTUAL_URL" ] && break
+done
 
 echo ""
 echo -e "${GREEN}${BOLD}═══════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}${BOLD}  GhumaggerSnap is live and shared!${NC}"
 echo -e "${GREEN}${BOLD}═══════════════════════════════════════════════════════${NC}"
 echo ""
-if [ -n "$SUBDOMAIN" ]; then
-  echo -e "  Public URL:  ${BOLD}https://${SUBDOMAIN}.loca.lt${NC}"
+if [ -n "$ACTUAL_URL" ]; then
+  echo -e "  Public URL:  ${BOLD}$ACTUAL_URL${NC}"
+  if [ -n "$SUBDOMAIN" ] && ! echo "$ACTUAL_URL" | grep -q "$SUBDOMAIN"; then
+    warn "Requested subdomain '$SUBDOMAIN' was not available."
+    warn "You got a random URL instead. Try a more unique subdomain next time."
+  fi
 else
-  echo -e "  ${BOLD}Check above for your public URL (https://xxxxx.loca.lt)${NC}"
+  echo -e "  ${BOLD}Check above for your public URL${NC}"
+  warn "Could not detect tunnel URL. It may still be connecting..."
 fi
 echo ""
 echo -e "  Share this URL with your friends!"
