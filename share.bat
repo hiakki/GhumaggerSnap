@@ -1,7 +1,8 @@
 @echo off
 REM ──────────────────────────────────────────────────────────
 REM GhumaggerSnap — Share with friends over the internet
-REM Usage: share.bat [MEDIA_DIR] [USERNAME] [PASSWORD]
+REM Usage: share.bat [MEDIA_DIR] [USERNAME] [PASSWORD] [TUNNEL_TYPE]
+REM   TUNNEL_TYPE: 1=localtunnel, 2=cloudflare, 3=serveo
 REM ──────────────────────────────────────────────────────────
 setlocal EnableDelayedExpansion
 set "ROOT=%~dp0"
@@ -13,10 +14,11 @@ echo   GhumaggerSnap — Share with Friends
 echo =============================================
 echo.
 
-REM ── Parse args: share.bat [MEDIA_DIR] [USERNAME] [PASSWORD]
+REM ── Parse args: share.bat [MEDIA_DIR] [USERNAME] [PASSWORD] [TUNNEL_TYPE]
 if not "%~1"=="" set "MEDIA_DIR=%~1"
 if not "%~2"=="" set "ADMIN_USER=%~2"
 if not "%~3"=="" set "ADMIN_PASS=%~3"
+if not "%~4"=="" set "TUNNEL=%~4"
 
 REM ── MEDIA_DIR ─────────────────────────────────
 if "%MEDIA_DIR%"=="" (

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────
 # GhumaggerSnap — Share with friends over the internet
-# Usage: ./share.sh [MEDIA_DIR] [USERNAME] [PASSWORD]
+# Usage: ./share.sh [MEDIA_DIR] [USERNAME] [PASSWORD] [TUNNEL_TYPE]
+#   TUNNEL_TYPE: 1=localtunnel, 2=cloudflare, 3=serveo
 #
 # Builds the frontend, runs in production mode (single port),
 # and opens a public tunnel. Three methods available:
@@ -36,10 +37,11 @@ echo -e "${BOLD}║     GhumaggerSnap — Share with Friends    ║${NC}"
 echo -e "${BOLD}╚═══════════════════════════════════════════╝${NC}"
 echo ""
 
-# ── Parse args: ./share.sh [MEDIA_DIR] [USERNAME] [PASSWORD]
+# ── Parse args: ./share.sh [MEDIA_DIR] [USERNAME] [PASSWORD] [TUNNEL_TYPE]
 MEDIA_DIR="${1:-$MEDIA_DIR}"
 ADMIN_USER="${2:-$ADMIN_USER}"
 ADMIN_PASS="${3:-$ADMIN_PASS}"
+TUNNEL="${4:-$TUNNEL}"
 
 # ── MEDIA_DIR ─────────────────────────────────
 if [ -z "$MEDIA_DIR" ]; then
